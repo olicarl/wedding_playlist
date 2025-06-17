@@ -1,41 +1,59 @@
-"""AI validation using DeepSeek API to assess party playlist suitability."""
+"""AI-powered track validation for party playlists."""
 
 import os
 import json
+import time
+from datetime import datetime
 from typing import List, Dict, Any
 from openai import OpenAI
 from rich.console import Console
 from rich.progress import Progress, TaskID
 
+# Ensure environment variables are loaded
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not available, assume env vars are set manually
+
 console = Console()
 
 
 class AIValidator:
-    """Uses DeepSeek AI to validate party playlist suitability."""
+    """Uses AI to validate tracks for party playlist suitability."""
     
     def __init__(self):
-        """Initialize the AI validator with DeepSeek API."""
-        self.api_key = os.getenv('DEEPSEEK_API_KEY')
-        if not self.api_key:
-            raise ValueError("DeepSeek API key not found. Please set DEEPSEEK_API_KEY environment variable.")
+        """Initialize the AI validator."""
+        # Initialize OpenAI client (DeepSeek API)
+        api_key = os.getenv('DEEPSEEK_API_KEY')
+        if not api_key:
+            console.print("⚠️ DEEPSEEK_API_KEY not found - AI validation will be skipped")
+            self.client = None
+        else:
+            self.client = OpenAI(
+                api_key=api_key,
+                base_url="https://api.deepseek.com"
+            )
         
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url="https://api.deepseek.com"
-        )
+        # Create logs directory
+        self.logs_dir = "output/ai_logs"
+        os.makedirs(self.logs_dir, exist_ok=True)
     
-    def validate_tracks_for_party(self, tracks: List[Dict[str, Any]], batch_size: int = 10) -> List[Dict[str, Any]]:
-        """
-        Validate a list of tracks for party suitability using DeepSeek AI.
+    def validate_tracks_for_party(self, tracks: List[Dict[str, Any]], batch_size: int = 5) -> List[Dict[str, Any]]:
+        """Validate tracks for party playlist suitability using AI."""
         
-        Args:
-            tracks: List of track dictionaries with name, artist, and audio features
-            batch_size: Number of tracks to validate in each API call
+        if not self.client:
+            console.print("⚠️ AI validation skipped - no API key")
+            # Return tracks with default scores
+            for track in tracks:
+                track.update({
+                    'ai_party_score': 5,
+                    'ai_reasoning': 'AI validation unavailable',
+                    'ai_recommendation': 'maybe'
+                })
+            return tracks
         
-        Returns:
-            List of tracks with AI validation results
-        """
-        console.print(f"🤖 Validating {len(tracks)} tracks with DeepSeek AI...")
+        console.print(f"🤖 Validating {len(tracks)} tracks with AI...")
         
         validated_tracks = []
         
@@ -43,75 +61,65 @@ class AIValidator:
             task = progress.add_task("Validating tracks...", total=len(tracks))
             
             for i in range(0, len(tracks), batch_size):
+                batch_number = (i // batch_size) + 1
                 batch = tracks[i:i + batch_size]
-                batch_results = self._validate_batch(batch)
+                batch_results = self._validate_batch(batch, batch_number)
                 validated_tracks.extend(batch_results)
                 progress.update(task, advance=len(batch))
         
-        console.print(f"✅ Completed AI validation for {len(validated_tracks)} tracks")
         return validated_tracks
     
-    def _validate_batch(self, tracks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _validate_batch(self, tracks: List[Dict[str, Any]], batch_number: int) -> List[Dict[str, Any]]:
         """Validate a batch of tracks using DeepSeek API."""
+        
         try:
-            # Prepare track information for AI analysis
+            # Prepare track information for AI analysis (metadata only)
             track_info = []
             for track in tracks:
-                info = {
-                    "name": track['name'],
-                    "artist": track['artist'],
-                    "audio_features": {
-                        "danceability": track.get('danceability', 0),
-                        "energy": track.get('energy', 0),
-                        "valence": track.get('valence', 0),
-                        "tempo": track.get('tempo', 0),
-                        "popularity": track.get('popularity', 0)
-                    }
-                }
-                track_info.append(info)
+                # Just pass the track as-is since we now use metadata
+                track_info.append(track)
             
-            # Create prompt for AI validation
+            # Create prompt for AI
             prompt = self._create_validation_prompt(track_info)
             
             # Call DeepSeek API
             response = self.client.chat.completions.create(
                 model="deepseek-chat",
                 messages=[
-                    {"role": "system", "content": "You are a music expert specializing in party and wedding playlists. Analyze tracks for their suitability in creating an energetic, fun party atmosphere."},
+                    {"role": "system", "content": "You are a music expert specializing in party and wedding playlists."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.1,
-                max_tokens=1000
+                temperature=0.3,
+                max_tokens=2000
             )
             
-            # Parse the response
             ai_response = response.choices[0].message.content
-            validation_results = self._parse_ai_response(ai_response)
             
-            # Combine results with original tracks
-            for i, track in enumerate(tracks):
-                if i < len(validation_results):
-                    track.update(validation_results[i])
-                else:
-                    # Default values if AI response is incomplete
-                    track.update({
-                        'ai_party_score': 5,
-                        'ai_reasoning': 'Unable to analyze',
-                        'ai_recommendation': 'maybe'
-                    })
+            # Parse AI response and update tracks
+            validation_results = self._parse_ai_response(ai_response, tracks)
             
-            return tracks
+            # Log the validation batch
+            self.log_validation_batch(batch_number, tracks, prompt, ai_response, validation_results)
+            
+            return validation_results
             
         except Exception as e:
             console.print(f"⚠️ Error in AI validation: {e}")
             # Return tracks with default AI scores
+            error_results = []
             for track in tracks:
-                track.update({
+                error_result = {
                     'ai_party_score': 5,
                     'ai_reasoning': f'API Error: {str(e)}',
                     'ai_recommendation': 'maybe'
-                })
-            return tracks
+                }
+                track.update(error_result)
+                error_results.append(track)
+            
+            # Log the error
+            self.log_validation_batch(batch_number, tracks, "ERROR", str(e), error_results)
+            
+            return error_results
     
     def _create_validation_prompt(self, track_info: List[Dict[str, Any]]) -> str:
         """Create a prompt for the AI to validate party suitability."""
@@ -127,113 +135,241 @@ Tracks to analyze:
 """
         
         for i, track in enumerate(track_info, 1):
-            features = track['audio_features']
-            prompt += f"""
-{i}. "{track['name']}" by {track['artist']}
-   - Danceability: {features['danceability']:.2f}
-   - Energy: {features['energy']:.2f}
-   - Valence (positivity): {features['valence']:.2f}
-   - Tempo: {features['tempo']:.0f} BPM
-   - Popularity: {features['popularity']}/100
-"""
+            track_description = self._format_track_for_ai(track)
+            prompt += f"\n{i}. {track_description}"
         
         prompt += """
-Please respond in JSON format:
-[
-  {
-    "track_number": 1,
-    "party_score": 8,
-    "reasoning": "High energy and danceability make this perfect for dancing",
-    "recommendation": "yes"
-  },
-  ...
-]"""
+
+Please respond in JSON format with an array of objects, each containing:
+{
+  "track_number": number,
+  "party_score": number,
+  "reasoning": "string",
+  "recommendation": "yes/no/maybe"
+}
+"""
         
         return prompt
     
-    def _parse_ai_response(self, response: str) -> List[Dict[str, Any]]:
-        """Parse the AI response and extract validation results."""
-        try:
-            # Try to find JSON in the response
-            start_idx = response.find('[')
-            end_idx = response.rfind(']') + 1
+    def _format_track_for_ai(self, track: Dict[str, Any]) -> str:
+        """Format track information for AI analysis (metadata-based with Last.fm enrichment)."""
+        
+        # Basic track info
+        track_info = f"Track: {track.get('name', 'Unknown')} by {track.get('artist', 'Unknown Artist')}"
+        
+        # Add available Spotify metadata
+        metadata_parts = []
+        
+        if 'popularity' in track:
+            metadata_parts.append(f"Spotify popularity: {track['popularity']}/100")
+        
+        if 'release_year' in track:
+            metadata_parts.append(f"Year: {track['release_year']}")
+        
+        if 'duration_ms' in track:
+            duration_min = track['duration_ms'] / (1000 * 60)
+            metadata_parts.append(f"Duration: {duration_min:.1f}min")
+        
+        # Add estimated energy from track name analysis
+        name_energy = self._estimate_energy_from_name(track.get('name', ''))
+        if name_energy:
+            metadata_parts.append(f"Estimated energy: {name_energy}")
+        
+        # Add album info if available
+        if 'album' in track and isinstance(track['album'], dict):
+            album_name = track['album'].get('name', '')
+            if album_name:
+                metadata_parts.append(f"Album: {album_name}")
+        
+        # Add Last.fm metadata if available
+        lastfm_data = track.get('lastfm', {})
+        if lastfm_data:
+            # Add Last.fm popularity metrics
+            if 'playcount' in lastfm_data and lastfm_data['playcount'] > 0:
+                metadata_parts.append(f"Last.fm plays: {lastfm_data['playcount']:,}")
             
-            if start_idx != -1 and end_idx != -1:
-                json_str = response[start_idx:end_idx]
-                results = json.loads(json_str)
+            if 'listeners' in lastfm_data and lastfm_data['listeners'] > 0:
+                metadata_parts.append(f"Last.fm listeners: {lastfm_data['listeners']:,}")
+            
+            # Add genres/tags from Last.fm
+            if 'genres' in lastfm_data and lastfm_data['genres']:
+                genres_str = ', '.join(lastfm_data['genres'][:3])  # Top 3 genres
+                metadata_parts.append(f"Genres: {genres_str}")
+            
+            # Add artist popularity from Last.fm
+            artist_info = lastfm_data.get('artist_info', {})
+            if 'listeners' in artist_info and artist_info['listeners'] > 0:
+                metadata_parts.append(f"Artist listeners: {artist_info['listeners']:,}")
+            
+            # Add artist style tags
+            if 'artist_tags' in lastfm_data and lastfm_data['artist_tags']:
+                artist_tags_str = ', '.join(lastfm_data['artist_tags'][:2])  # Top 2 artist tags
+                metadata_parts.append(f"Artist style: {artist_tags_str}")
+            
+            # Add similar tracks for context
+            if 'similar_tracks' in lastfm_data and lastfm_data['similar_tracks']:
+                similar = lastfm_data['similar_tracks'][:2]  # Top 2 similar tracks
+                similar_str = ', '.join([f"{s['artist']} - {s['track']}" for s in similar])
+                metadata_parts.append(f"Similar to: {similar_str}")
+        
+        # Combine all metadata
+        if metadata_parts:
+            track_info += " | " + " | ".join(metadata_parts)
+        
+        return track_info
+
+    def _estimate_energy_from_name(self, track_name: str) -> str:
+        """Estimate energy level from track name keywords."""
+        if not track_name:
+            return ""
+        
+        track_lower = track_name.lower()
+        
+        # High energy keywords
+        high_energy_words = ['party', 'dance', 'pump', 'energy', 'wild', 'crazy', 'fire', 'hype', 'upbeat', 'bounce']
+        # Low energy keywords  
+        low_energy_words = ['slow', 'ballad', 'sad', 'melancholy', 'quiet', 'soft', 'gentle', 'calm', 'peaceful']
+        
+        high_count = sum(1 for word in high_energy_words if word in track_lower)
+        low_count = sum(1 for word in low_energy_words if word in track_lower)
+        
+        if high_count > low_count:
+            return "High"
+        elif low_count > high_count:
+            return "Low"
+        else:
+            return "Medium"
+    
+    def _parse_ai_response(self, ai_response: str, tracks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Parse AI response and update track information."""
+        
+        try:
+            # Try to extract JSON from the response
+            json_start = ai_response.find('[')
+            json_end = ai_response.rfind(']') + 1
+            
+            if json_start != -1 and json_end > json_start:
+                json_str = ai_response[json_start:json_end]
+                ai_results = json.loads(json_str)
                 
-                # Convert to expected format
-                parsed_results = []
-                for result in results:
-                    parsed_results.append({
-                        'ai_party_score': result.get('party_score', 5),
-                        'ai_reasoning': result.get('reasoning', 'No reasoning provided'),
-                        'ai_recommendation': result.get('recommendation', 'maybe').lower()
-                    })
-                
-                return parsed_results
+                # Update tracks with AI results
+                for i, result in enumerate(ai_results):
+                    if i < len(tracks):
+                        tracks[i].update({
+                            'ai_party_score': result.get('party_score', 5),
+                            'ai_reasoning': result.get('reasoning', 'No reasoning provided'),
+                            'ai_recommendation': result.get('recommendation', 'maybe')
+                        })
             else:
-                raise ValueError("No JSON found in response")
+                raise ValueError("No valid JSON found in response")
                 
         except Exception as e:
             console.print(f"⚠️ Error parsing AI response: {e}")
-            return []
+            # Fallback: assign default scores
+            for track in tracks:
+                track.update({
+                    'ai_party_score': 5,
+                    'ai_reasoning': f'Parsing error: {str(e)}',
+                    'ai_recommendation': 'maybe'
+                })
+        
+        return tracks
     
-    def filter_party_tracks(self, validated_tracks: List[Dict[str, Any]], min_score: float = 6.0) -> List[Dict[str, Any]]:
-        """
-        Filter tracks based on AI validation scores.
+    def log_validation_batch(self, batch_number: int, tracks: List[Dict[str, Any]], 
+                           prompt: str, ai_response: str, results: List[Dict[str, Any]]):
+        """Log the complete AI validation process for review."""
         
-        Args:
-            validated_tracks: Tracks with AI validation results
-            min_score: Minimum AI party score to include
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        Returns:
-            Filtered list of party-suitable tracks
-        """
-        party_tracks = []
+        # Create human-readable log
+        log_filename = f"ai_validation_{timestamp}.log"
+        log_path = os.path.join(self.logs_dir, log_filename)
         
-        for track in validated_tracks:
-            ai_score = track.get('ai_party_score', 0)
-            ai_recommendation = track.get('ai_recommendation', 'no')
+        # Create detailed JSON log
+        json_filename = f"ai_detailed_{timestamp}.json"
+        json_path = os.path.join(self.logs_dir, json_filename)
+        
+        # Write human-readable log
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"BATCH {batch_number} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"{'='*80}\n\n")
             
-            if ai_score >= min_score or ai_recommendation == 'yes':
-                party_tracks.append(track)
+            f.write("TRACKS BEING ANALYZED:\n")
+            f.write("-" * 40 + "\n")
+            for i, track in enumerate(tracks, 1):
+                f.write(f"{i}. {track.get('name', 'Unknown')} by {track.get('artist', 'Unknown')}\n")
+            
+            f.write(f"\nAI PROMPT SENT:\n")
+            f.write("-" * 40 + "\n")
+            f.write(prompt + "\n")
+            
+            f.write(f"\nAI RESPONSE RECEIVED:\n")
+            f.write("-" * 40 + "\n")
+            f.write(ai_response + "\n")
+            
+            f.write(f"\nPARSED RESULTS:\n")
+            f.write("-" * 40 + "\n")
+            for track in results:
+                f.write(f"• {track.get('name', 'Unknown')} by {track.get('artist', 'Unknown')}\n")
+                f.write(f"  Score: {track.get('ai_party_score', 'N/A')}/10\n")
+                f.write(f"  Recommendation: {track.get('ai_recommendation', 'N/A')}\n")
+                f.write(f"  Reasoning: {track.get('ai_reasoning', 'N/A')}\n\n")
         
-        console.print(f"🎉 Selected {len(party_tracks)} tracks out of {len(validated_tracks)} for party playlist")
-        return party_tracks
+        # Write detailed JSON log
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "batch_number": batch_number,
+            "tracks": tracks,
+            "prompt": prompt,
+            "ai_response": ai_response,
+            "results": results
+        }
+        
+        # Read existing log or create new
+        json_data = []
+        if os.path.exists(json_path):
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    json_data = json.load(f)
+            except:
+                json_data = []
+        
+        json_data.append(log_entry)
+        
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(json_data, f, indent=2, ensure_ascii=False)
+        
+        console.print(f"📝 Logged batch {batch_number} to {log_filename} and {json_filename}")
     
-    def display_validation_summary(self, validated_tracks: List[Dict[str, Any]]) -> None:
+    def display_validation_summary(self, tracks: List[Dict[str, Any]]):
         """Display a summary of AI validation results."""
-        from rich.table import Table
         
-        table = Table(title="🤖 AI Validation Summary")
-        table.add_column("Track", style="cyan")
-        table.add_column("Artist", style="magenta")
-        table.add_column("AI Score", style="green")
-        table.add_column("Recommendation", style="yellow")
-        table.add_column("Reasoning", style="white")
+        # Calculate statistics
+        scores = [track.get('ai_party_score', 0) for track in tracks]
+        avg_score = sum(scores) / len(scores) if scores else 0
         
-        # Sort by AI score (descending)
-        sorted_tracks = sorted(validated_tracks, key=lambda x: x.get('ai_party_score', 0), reverse=True)
+        recommendations = {}
+        for track in tracks:
+            rec = track.get('ai_recommendation', 'unknown')
+            recommendations[rec] = recommendations.get(rec, 0) + 1
         
-        for track in sorted_tracks[:15]:  # Show top 15
-            score = track.get('ai_party_score', 0)
-            recommendation = track.get('ai_recommendation', 'unknown')
-            reasoning = track.get('ai_reasoning', 'No reasoning')
-            
-            # Color code recommendation
-            rec_color = {
-                'yes': '✅ YES',
-                'maybe': '🤔 MAYBE',
-                'no': '❌ NO'
-            }.get(recommendation, recommendation)
-            
-            table.add_row(
-                track['name'][:30] + "..." if len(track['name']) > 30 else track['name'],
-                track['artist'][:20] + "..." if len(track['artist']) > 20 else track['artist'],
-                f"{score}/10",
-                rec_color,
-                reasoning[:50] + "..." if len(reasoning) > 50 else reasoning
-            )
+        # Display summary
+        console.print("\n🤖 AI Validation Summary:")
+        console.print(f"   Average party score: {avg_score:.1f}/10")
+        console.print(f"   Recommendations:")
+        for rec, count in recommendations.items():
+            console.print(f"     • {rec}: {count} tracks")
+    
+    def filter_party_tracks(self, tracks: List[Dict[str, Any]], min_score: float = 6.0) -> List[Dict[str, Any]]:
+        """Filter tracks that are suitable for parties based on AI scores."""
         
-        console.print(table) 
+        party_tracks = [
+            track for track in tracks 
+            if track.get('ai_party_score', 0) >= min_score
+        ]
+        
+        # Sort by AI score (highest first)
+        party_tracks.sort(key=lambda x: x.get('ai_party_score', 0), reverse=True)
+        
+        return party_tracks 

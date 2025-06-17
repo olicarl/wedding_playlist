@@ -1,10 +1,18 @@
 """Spotify API client for extracting user's favorite music."""
 
 import os
+import time
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from typing import List, Dict, Any
 from rich.console import Console
+
+# Ensure environment variables are loaded
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not available, assume env vars are set manually
 
 console = Console()
 
@@ -16,10 +24,15 @@ class SpotifyClient:
         """Initialize Spotify client with OAuth."""
         self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
         self.client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
-        self.redirect_uri = os.getenv('SPOTIFY_REDIRECT_URI', 'http://localhost:8888/callback')
+        self.redirect_uri = os.getenv('SPOTIFY_REDIRECT_URI', 'https://127.0.0.1:8888/callback')
         
         if not self.client_id or not self.client_secret:
-            raise ValueError("Spotify credentials not found. Please set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET environment variables.")
+            raise ValueError(
+                "Spotify credentials not found. Please ensure your .env file contains:\n"
+                "SPOTIFY_CLIENT_ID=your_client_id\n"
+                "SPOTIFY_CLIENT_SECRET=your_client_secret\n"
+                "Or run: uv run python main.py setup"
+            )
         
         scope = "user-library-read playlist-modify-public playlist-modify-private user-top-read"
         self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
@@ -47,11 +60,17 @@ class SpotifyClient:
                 'id': item['id'],
                 'name': item['name'],
                 'artist': ', '.join([artist['name'] for artist in item['artists']]),
-                'album': item['album']['name'],
+                'album': {
+                    'name': item['album']['name'],
+                    'release_date': item['album'].get('release_date', ''),
+                    'total_tracks': item['album'].get('total_tracks', 0)
+                },
                 'popularity': item['popularity'],
                 'preview_url': item['preview_url'],
                 'external_urls': item['external_urls'],
-                'duration_ms': item['duration_ms']
+                'duration_ms': item['duration_ms'],
+                'explicit': item.get('explicit', False),
+                'track_number': item.get('track_number', 0)
             }
             tracks.append(track_info)
         
@@ -62,14 +81,55 @@ class SpotifyClient:
         """Get audio features for a list of track IDs."""
         console.print(f"🔊 Analyzing audio features for {len(track_ids)} tracks...")
         
-        # Spotify API allows max 100 tracks per request
-        all_features = []
-        for i in range(0, len(track_ids), 100):
-            batch = track_ids[i:i+100]
-            features = self.sp.audio_features(batch)
-            all_features.extend([f for f in features if f is not None])
+        # Remove duplicates and filter out None/empty IDs
+        unique_track_ids = list(dict.fromkeys([tid for tid in track_ids if tid and isinstance(tid, str) and len(tid) == 22]))
+        console.print(f"📊 Processing {len(unique_track_ids)} unique valid track IDs...")
         
-        console.print(f"✅ Retrieved audio features for {len(all_features)} tracks")
+        if not unique_track_ids:
+            console.print("⚠️ No valid track IDs to process")
+            return []
+        
+        # Debug: show first few track IDs
+        console.print(f"🔍 Sample track IDs: {unique_track_ids[:3]}")
+        
+        # Use smaller batch size to avoid URL length issues and rate limiting
+        batch_size = 50
+        all_features = []
+        
+        for i in range(0, len(unique_track_ids), batch_size):
+            batch = unique_track_ids[i:i+batch_size]
+            console.print(f"🔄 Processing batch {i//batch_size + 1}/{(len(unique_track_ids) + batch_size - 1)//batch_size} ({len(batch)} tracks)")
+            
+            try:
+                features = self.sp.audio_features(batch)
+                valid_features = [f for f in features if f is not None]
+                all_features.extend(valid_features)
+                console.print(f"✅ Retrieved {len(valid_features)} audio features from batch")
+                
+                # Small delay to avoid rate limiting
+                time.sleep(0.1)
+                
+            except Exception as e:
+                console.print(f"⚠️ Error processing batch: {e}")
+                console.print(f"📝 Batch track IDs: {batch[:5]}{'...' if len(batch) > 5 else ''}")
+                
+                # Try processing tracks one by one to identify problematic ones
+                console.print("🔧 Trying individual track processing...")
+                for track_id in batch:
+                    try:
+                        feature = self.sp.audio_features([track_id])
+                        if feature and feature[0]:
+                            all_features.append(feature[0])
+                            console.print(f"✅ Processed track: {track_id}")
+                        else:
+                            console.print(f"⚠️ No features for track: {track_id}")
+                    except Exception as track_error:
+                        console.print(f"❌ Failed track {track_id}: {track_error}")
+                    
+                    # Small delay between individual requests
+                    time.sleep(0.05)
+        
+        console.print(f"✅ Retrieved audio features for {len(all_features)} tracks total")
         return all_features
     
     def get_saved_tracks(self, limit: int = 50) -> List[Dict[str, Any]]:
@@ -92,11 +152,17 @@ class SpotifyClient:
                     'id': track['id'],
                     'name': track['name'],
                     'artist': ', '.join([artist['name'] for artist in track['artists']]),
-                    'album': track['album']['name'],
+                    'album': {
+                        'name': track['album']['name'],
+                        'release_date': track['album'].get('release_date', ''),
+                        'total_tracks': track['album'].get('total_tracks', 0)
+                    },
                     'popularity': track['popularity'],
                     'preview_url': track['preview_url'],
                     'external_urls': track['external_urls'],
-                    'duration_ms': track['duration_ms']
+                    'duration_ms': track['duration_ms'],
+                    'explicit': track.get('explicit', False),
+                    'track_number': track.get('track_number', 0)
                 }
                 tracks.append(track_info)
             

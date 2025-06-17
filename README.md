@@ -1,220 +1,250 @@
 # 🎵 AI-Powered Wedding Playlist Generator
 
-An intelligent Python application that analyzes your Spotify music, clusters tracks by style, and uses DeepSeek AI to create the perfect wedding party playlist.
+An intelligent wedding playlist generator that extracts your favorite music from Spotify, enriches it with Last.fm metadata, clusters tracks by music style, and uses DeepSeek AI to validate tracks for party suitability.
 
 ## ✨ Features
 
-- **🎯 Smart Music Extraction**: Pulls your favorite tracks from Spotify (top tracks + saved songs)
-- **🔬 Audio Analysis**: Uses Spotify's audio features to analyze danceability, energy, mood, and tempo
-- **🎪 Style Clustering**: Groups your music into distinct style clusters using machine learning
-- **🤖 AI Validation**: DeepSeek AI evaluates each track's party suitability with detailed reasoning
-- **📊 Rich Analytics**: Beautiful terminal displays and comprehensive analysis reports
-- **📝 Multiple Outputs**: Generates text files, JSON data, and analysis reports
-- **🎵 Spotify Integration**: Automatically creates playlists in your Spotify account
+- **🎧 Spotify Integration**: Extract your top tracks and saved songs
+- **🎵 Last.fm Enrichment**: Add detailed genre tags, similar tracks, and popularity metrics
+- **🧠 AI-Powered Analysis**: Uses DeepSeek AI to evaluate party suitability
+- **📊 Music Clustering**: Groups tracks by musical style using machine learning
+- **📁 Multiple Output Formats**: TXT, JSON, and detailed analysis reports
+- **🎉 Spotify Playlist Creation**: Automatically create playlists on your Spotify account
+- **📝 Comprehensive Logging**: Detailed logs of AI analysis for review
 
 ## 🚀 Quick Start
 
-### 1. Installation
+### 1. Prerequisites
+
+- Python 3.9+
+- UV package manager
+- Spotify Developer Account
+- DeepSeek API Account
+- Last.fm API Account (optional, for enhanced metadata)
+
+### 2. Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/olicarl/wedding_playlist.git
+git clone https://github.com/yourusername/wedding_playlist.git
 cd wedding_playlist
 
-# Install dependencies with UV
+# Install dependencies using UV
 uv sync
 ```
 
-### 2. Setup API Credentials
+### 3. Setup API Credentials
 
-Run the interactive setup:
+#### Spotify API Setup
+1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+2. Create a new app
+3. Add redirect URI: `https://127.0.0.1:8888/callback`
+4. Copy Client ID and Client Secret
 
-```bash
-uv run python main.py setup
-```
+#### DeepSeek API Setup
+1. Visit [DeepSeek Platform](https://platform.deepseek.com)
+2. Create an account and get your API key
 
-Or manually create a `.env` file:
+#### Last.fm API Setup (Optional)
+1. Go to [Last.fm API](https://www.last.fm/api/account/create)
+2. Create an API account
+3. Get your API key
+
+#### Environment Configuration
+Copy the example environment file and fill in your credentials:
 
 ```bash
 cp env.example .env
-# Edit .env with your credentials
 ```
 
-**Required APIs:**
-- **Spotify**: Get credentials from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-- **DeepSeek**: Get API key from [DeepSeek Platform](https://platform.deepseek.com)
+Edit `.env` with your API credentials:
 
-### 3. Generate Your Playlist
+```env
+# Spotify API credentials
+SPOTIFY_CLIENT_ID=your_spotify_client_id_here
+SPOTIFY_CLIENT_SECRET=your_spotify_client_secret_here
+SPOTIFY_REDIRECT_URI=https://127.0.0.1:8888/callback
 
-```bash
-# Basic generation
-uv run python main.py generate
+# DeepSeek API credentials
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
 
-# Advanced options
-uv run python main.py generate --tracks 150 --clusters 7 --ai-score 7.0 --create-spotify
+# Last.fm API credentials (optional - for enhanced metadata)
+LASTFM_API_KEY=your_lastfm_api_key_here
 ```
 
-## 🛠️ Commands
+### 4. First Run
 
-### `generate` - Create AI-curated playlist
-```bash
-uv run python main.py generate [OPTIONS]
+Set up Spotify authentication:
 
-Options:
-  -t, --tracks INTEGER     Number of tracks to analyze (default: 100)
-  -c, --clusters INTEGER   Number of music style clusters (default: 5)
-  -s, --ai-score FLOAT     Minimum AI party score (default: 6.0)
-  --create-spotify         Create Spotify playlist
-  -o, --output-dir TEXT    Output directory for files
-```
-
-### `analyze` - Music analysis only
-```bash
-uv run python main.py analyze
-```
-
-### `setup` - Configure API credentials
 ```bash
 uv run python main.py setup
 ```
 
-### `test` - Test API connections
-```bash
-uv run python main.py test
-```
+## 📖 Usage
 
-## 📊 How It Works
-
-### 1. **Music Extraction**
-- Fetches your top tracks from Spotify
-- Retrieves your saved/liked songs
-- Combines and deduplicates the collection
-
-### 2. **Audio Analysis**
-- Extracts Spotify's audio features for each track:
-  - **Danceability**: How suitable for dancing (0.0 - 1.0)
-  - **Energy**: Intensity and power (0.0 - 1.0)
-  - **Valence**: Musical positivity/mood (0.0 - 1.0)
-  - **Tempo**: BPM of the track
-  - **Acousticness**: Acoustic vs. electronic (0.0 - 1.0)
-
-### 3. **Style Clustering**
-- Uses K-means clustering with PCA dimensionality reduction
-- Groups tracks into distinct musical styles
-- Analyzes each cluster's characteristics
-- Provides style descriptions (e.g., "High-energy dance upbeat")
-
-### 4. **AI Validation**
-- Sends batches of tracks to DeepSeek AI
-- AI evaluates party suitability (1-10 score)
-- Provides reasoning for each recommendation
-- Considers factors like energy, danceability, and mood
-
-### 5. **Playlist Generation**
-- Filters tracks based on AI scores
-- Generates multiple output formats
-- Creates Spotify playlists automatically
-
-## 📁 Output Files
-
-The application generates several files in the `output/` directory:
-
-- **`wedding_party_playlist_*.txt`**: Human-readable playlist with track details
-- **`wedding_party_playlist_*.json`**: Machine-readable data with full metadata
-- **`playlist_analysis_report_*.txt`**: Comprehensive analysis report
-
-## 🎯 Example Workflow
+### Generate Complete Wedding Playlist
 
 ```bash
-# Setup (first time only)
-uv run python main.py setup
+# Generate playlist with 50 tracks, 5 clusters, minimum AI score of 6.0
+uv run python main.py generate --tracks 50 --clusters 5 --min-score 6.0
 
-# Test connections
-uv run python main.py test
+# Create playlist directly on Spotify
+uv run python main.py generate --tracks 30 --create-spotify-playlist
 
-# Generate playlist
-uv run python main.py generate --tracks 100 --create-spotify
+# Skip Last.fm enrichment for faster processing
+uv run python main.py generate --tracks 20 --skip-lastfm
 ```
 
-## 🔧 Configuration
+### Quick Music Analysis
 
-### Audio Feature Thresholds for Party Music
-The application uses these criteria for party-suitable tracks:
-- **Danceability**: 0.6 - 1.0 (high)
-- **Energy**: 0.5 - 1.0 (medium to high)
-- **Valence**: 0.4 - 1.0 (positive mood)
-- **Tempo**: 100 - 180 BPM
-- **Acousticness**: 0.0 - 0.4 (prefer electronic)
+```bash
+# Analyze your music collection without generating playlists
+uv run python main.py analyze --tracks 30 --clusters 4
 
-### Clustering Algorithm
-- **Algorithm**: K-means with PCA preprocessing
-- **Features**: 9 audio features normalized with StandardScaler
-- **Dimensionality**: Reduced to 5 components via PCA
-- **Clusters**: Configurable (default: 5)
+# Skip Last.fm for faster analysis
+uv run python main.py analyze --tracks 20 --skip-lastfm
+```
 
-## 🤖 AI Integration
+### Test API Connections
 
-The DeepSeek AI validator:
-- Analyzes tracks in batches for efficiency
-- Considers audio features + track metadata
-- Provides 1-10 party suitability scores
-- Gives detailed reasoning for each decision
-- Recommends "yes", "maybe", or "no" for inclusion
+```bash
+# Test all API connections
+uv run python main.py test
 
-## 🎵 Spotify Integration
+# Debug environment variables
+uv run python main.py debug
+```
 
-### Required Permissions
-- `user-library-read`: Access saved tracks
-- `user-top-read`: Access top tracks
-- `playlist-modify-public`: Create public playlists
-- `playlist-modify-private`: Create private playlists
+## 🔧 Command Line Options
 
-### Playlist Creation
-- Automatically creates private playlists
-- Includes AI-generated description with statistics
-- Handles large playlists (100+ tracks)
+### `generate` - Generate Wedding Playlist
+- `--tracks`: Number of tracks to analyze (default: 50)
+- `--clusters`: Number of music style clusters (default: 5)
+- `--min-score`: Minimum AI score for party tracks (default: 6.0)
+- `--create-spotify-playlist`: Create playlist on Spotify
+- `--skip-lastfm`: Skip Last.fm metadata enrichment
 
-## 🐛 Troubleshooting
+### `analyze` - Music Collection Analysis
+- `--tracks`: Number of tracks to analyze (default: 20)
+- `--clusters`: Number of clusters (default: 3)
+- `--skip-lastfm`: Skip Last.fm metadata enrichment
+
+### `setup` - Configure Spotify Authentication
+- Interactive setup for Spotify OAuth
+
+### `test` - Test API Connections
+- Validates all API credentials and connections
+
+### `debug` - Debug Environment
+- Shows environment variable status
+
+## 📊 Output Files
+
+The generator creates several output files in the `output/` directory:
+
+### Playlist Files
+- `wedding_party_playlist_YYYYMMDD_HHMMSS.txt` - Simple track list
+- `wedding_party_playlist_YYYYMMDD_HHMMSS.json` - Detailed track data
+
+### Analysis Reports
+- `playlist_analysis_report_YYYYMMDD_HHMMSS.txt` - Comprehensive analysis
+- `music_clusters_YYYYMMDD_HHMMSS.json` - Clustering analysis
+
+### AI Logs (for review)
+- `output/ai_logs/ai_validation_YYYYMMDD_HHMMSS.log` - Human-readable AI analysis
+- `output/ai_logs/ai_detailed_YYYYMMDD_HHMMSS.json` - Structured AI data
+
+## 🎯 How It Works
+
+1. **🎵 Music Extraction**: Fetches your top tracks and saved songs from Spotify
+2. **🔍 Metadata Enrichment**: Adds Last.fm data including genres, similar tracks, and popularity
+3. **🧮 Style Clustering**: Uses K-means clustering to group tracks by musical characteristics
+4. **🤖 AI Validation**: DeepSeek AI analyzes each track for party suitability
+5. **📊 Analysis & Filtering**: Generates detailed reports and filters tracks by AI scores
+6. **🎉 Playlist Creation**: Creates final playlist files and optionally Spotify playlists
+
+## 🎨 Example Output
+
+```
+🎵 AI-Powered Wedding Playlist Generator 🎵
+
+📥 Extracting 50 favorite tracks from Spotify...
+📊 Deduplicated to 47 unique tracks
+
+🎵 Enriching tracks with Last.fm metadata...
+📊 Top genres found:
+  • pop: 12 tracks
+  • rock: 8 tracks
+  • electronic: 6 tracks
+
+🧮 Clustering 47 tracks into 5 style groups...
+🤖 Starting AI validation with DeepSeek...
+🎉 Selected 23 tracks for the party playlist!
+
+📄 Generating outputs...
+✅ Created: wedding_party_playlist_20240617_143022.txt
+✅ Created: wedding_party_playlist_20240617_143022.json
+✅ Created: playlist_analysis_report_20240617_143022.txt
+```
+
+## 🔍 AI Analysis Details
+
+The AI logs provide complete transparency into the decision-making process:
+
+- **Full prompts** sent to the AI
+- **Complete responses** from DeepSeek
+- **Detailed reasoning** for each track
+- **Party suitability scores** (1-10)
+- **Recommendations** (yes/no/maybe)
+
+## 🛠️ Troubleshooting
 
 ### Common Issues
 
-**Spotify Authentication Error**
-- Ensure redirect URI is set to `http://localhost:8888/callback`
-- Check client ID and secret are correct
-- Run `uv run python main.py test` to verify
+1. **"INVALID_CLIENT: Invalid redirect URI"**
+   - Ensure redirect URI in Spotify app settings matches: `https://127.0.0.1:8888/callback`
 
-**DeepSeek API Error**
-- Verify API key is valid
-- Check rate limits and quotas
-- Ensure you have credits in your DeepSeek account
+2. **"DEEPSEEK_API_KEY not found"**
+   - Check your `.env` file has the correct API key
+   - Verify the key is valid on DeepSeek platform
 
-**No Tracks Found**
-- Make sure you have liked songs or listening history on Spotify
-- Try reducing the number of tracks requested
-- Check your Spotify account has sufficient data
+3. **"Last.fm enrichment failed"**
+   - Last.fm API key may be invalid or missing
+   - Use `--skip-lastfm` flag to bypass Last.fm enrichment
 
-## 🔗 Dependencies
+4. **Rate limiting errors**
+   - The tool includes automatic rate limiting and retries
+   - For persistent issues, reduce batch sizes or add delays
 
-- **spotipy**: Spotify Web API integration
-- **scikit-learn**: Machine learning for clustering
-- **pandas/numpy**: Data manipulation and analysis
-- **openai**: DeepSeek AI API client
-- **click**: Command-line interface
-- **rich**: Beautiful terminal output
-- **python-dotenv**: Environment variable management
+### Debug Commands
+
+```bash
+# Check environment variables
+uv run python main.py debug
+
+# Test individual API connections
+uv run python main.py test
+```
 
 ## 🤝 Contributing
 
-Feel free to contribute to this project! Areas for improvement:
-- Additional music streaming services
-- More sophisticated clustering algorithms
-- Integration with other AI models
-- Advanced audio feature analysis
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## 📄 License
 
-This project is open source. Feel free to use and modify as needed.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- **Spotify** for the comprehensive music API
+- **Last.fm** for detailed music metadata and genre information
+- **DeepSeek** for AI-powered music analysis
+- **scikit-learn** for machine learning clustering algorithms
 
 ---
 
-**Happy playlist generating! 🎉** 
+*Perfect for weddings, parties, and any celebration where you want AI-curated music that gets people dancing! 🎉* 
