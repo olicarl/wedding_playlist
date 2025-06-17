@@ -9,6 +9,20 @@ env/
 venv/
 .venv/
 
+# UV specific
+.uv/
+uv.lock
+
+# Python specific
+*.py[cod]
+*$py.class
+*.so
+.coverage
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
 # IDE files
 .vscode/
 .idea/
